@@ -2,6 +2,8 @@
 using DeskBooker.Core.Domain;
 using Moq;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace DeskBooker.Core.Processor
@@ -10,12 +12,12 @@ namespace DeskBooker.Core.Processor
     {
         private DeskBookingRequestProcessor _processor;
         private Mock<IDeskBookingRepository> _deskBookingRepositoryMock;
+        private Mock<IDeskRepository> _deskRepositoryMock;
+        private List<Desk> _availabeDesks;
         private DeskBookingRequest _request;
 
         public DeskBookingRequestProcessorTests()
         {
-            _deskBookingRepositoryMock = new Mock<IDeskBookingRepository>();
-            _processor = new DeskBookingRequestProcessor(_deskBookingRepositoryMock.Object);
             _request = new DeskBookingRequest
             {
                 FirstName = "Karthik",
@@ -23,6 +25,14 @@ namespace DeskBooker.Core.Processor
                 Email = "kms@gmail.com",
                 Date = new DateTime(2020, 10, 17)
             };
+            _availabeDesks = new List<Desk> { new Desk { Id = 18 } };
+
+            _deskBookingRepositoryMock = new Mock<IDeskBookingRepository>();
+            _deskRepositoryMock = new Mock<IDeskRepository>();
+
+            _deskRepositoryMock.Setup(x => x.GetAvailableDesk(_request.Date)).Returns(_availabeDesks);
+
+            _processor = new DeskBookingRequestProcessor(_deskBookingRepositoryMock.Object, _deskRepositoryMock.Object);
 
         }
 
@@ -76,6 +86,31 @@ namespace DeskBooker.Core.Processor
             Assert.Equal(_request.LastName, saveDeskBooking.LastName);
             Assert.Equal(_request.Email, saveDeskBooking.Email);
             Assert.Equal(_request.Date, saveDeskBooking.Date);
+            Assert.Equal(_availabeDesks.First().Id, saveDeskBooking.DeskId);
+        }
+
+        [Fact]
+        public void ShouldNotSaveIfNoDeskIsAvailable()
+        {
+            _availabeDesks.Clear();
+            _processor.BookDesk(_request);
+
+            _deskBookingRepositoryMock.Verify(x => x.Save(It.IsAny<DeskBooking>()), Times.Never);
+
+        }
+
+        [Theory]
+        [InlineData(DeskbookingResultCode.Success, true)]
+        [InlineData(DeskbookingResultCode.NotAvailable, false)]
+        public void ShouldReturnExpectedResultCode(DeskbookingResultCode expectedResultCode, bool isDeskAvailable)
+        {
+            if (!isDeskAvailable)
+            {
+                _availabeDesks.Clear();
+            }
+
+            var result = _processor.BookDesk(_request);
+            Assert.Equal(expectedResultCode, result.Code);
         }
     }
 }
